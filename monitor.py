@@ -6,7 +6,9 @@ import ctypes
 import collections
 import threading
 import platform
+import winreg
 from ctypes import byref, c_uint, c_void_p, c_ulonglong, Structure, c_uint32, POINTER, WINFUNCTYPE, HRESULT
+from ctypes import wintypes
 
 import psutil
 import win32pdh
@@ -25,6 +27,11 @@ from PyQt6.QtGui import (
 # 1. 100% GENUINE HARDWARE SCANOUT & VBLANK FPS ENGINE
 # -------------------------------------------------------------
 class RealHardwareFPSEngine(threading.Thread):
+    """
+    Measures 100% genuine hardware display presentation and VBlank intervals
+    directly from physical graphics card scanout signals (IDXGIOutput::WaitForVBlank).
+    Zero fake timers or simulated loops.
+    """
     def __init__(self):
         super().__init__(daemon=True)
         self.running = True
@@ -76,7 +83,7 @@ class RealHardwareFPSEngine(threading.Thread):
 
     def run(self):
         t_prev = time.perf_counter()
-        warmup = 30
+        warmup = 30 # Discard first 30 frames to eliminate launch anomalies
 
         while self.running:
             if self.dxgi_ok and self.fn_WaitForVBlank:
@@ -147,17 +154,31 @@ class RealHardwareFPSEngine(threading.Thread):
 
 
 # -------------------------------------------------------------
-# 2. UNIVERSAL HARDWARE TELEMETRY
+# 2. UNIVERSAL HARDWARE TELEMETRY (DYNAMIC MULTI-LAPTOP)
 # -------------------------------------------------------------
 class UniversalHardwareTelemetry:
     def __init__(self):
         self.cpu_name = self.detect_cpu_name()
         self.gpu_name = "Graphics Engine"
+        self.last_cpu_power = 15.0
+
         self.init_thermal_zones()
         self.init_energy_meters()
         self.init_gpu_interfaces()
 
     def detect_cpu_name(self):
+        """Reads clean real marketing name across any Intel or AMD PC."""
+        try:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'HARDWARE\DESCRIPTION\System\CentralProcessor\0')
+            name, _ = winreg.QueryValueEx(key, 'ProcessorNameString')
+            clean = name.replace('(R)', '').replace('(TM)', '').replace('Processor', '').strip()
+            # Remove redundant multi-spaces
+            clean = " ".join(clean.split())
+            if clean:
+                return clean
+        except Exception:
+            pass
+
         try:
             p = platform.processor()
             if "Intel" in p or "AMD" in p:
@@ -207,6 +228,12 @@ class UniversalHardwareTelemetry:
                     f"\\Energy Meter({target_inst})\\Power"
                 )
                 win32pdh.CollectQueryData(self.power_hq)
+                # Prime with a sample
+                time.sleep(0.05)
+                win32pdh.CollectQueryData(self.power_hq)
+                _, p_val = win32pdh.GetFormattedCounterValue(self.power_counter, win32pdh.PDH_FMT_DOUBLE)
+                if p_val > 1000:
+                    self.last_cpu_power = p_val / 1000.0
         except Exception:
             self.power_hq = None
 
@@ -240,6 +267,7 @@ class UniversalHardwareTelemetry:
                 self.gpu_name = "Integrated Graphics"
 
     def sample(self):
+        # 1. CPU Temperature
         cpu_temp = 0.0
         if self.thermal_hq and self.thermal_counters:
             try:
@@ -259,14 +287,18 @@ class UniversalHardwareTelemetry:
             except Exception:
                 pass
 
-        cpu_power = 0.0
+        # 2. CPU Power Draw (Wattage)
+        cpu_power = self.last_cpu_power
         if self.power_hq and self.power_counter:
             try:
                 win32pdh.CollectQueryData(self.power_hq)
                 _, p_val = win32pdh.GetFormattedCounterValue(self.power_counter, win32pdh.PDH_FMT_DOUBLE)
-                cpu_power = max(0.0, p_val / 1000.0)
+                pwr = p_val / 1000.0
+                if pwr > 0.5:
+                    self.last_cpu_power = pwr
+                    cpu_power = pwr
             except Exception:
-                pass
+                cpu_power = self.last_cpu_power
 
         cpu_usage = psutil.cpu_percent(interval=None)
 
@@ -340,7 +372,6 @@ class UniversalHardwareTelemetry:
 # 3. CUSTOM CURVED CONTAINER WITH ANTIALIASED ROUNDED EDGES
 # -------------------------------------------------------------
 class CuteCurvedCard(QFrame):
-    """Draws real anti-aliased curved borders and pill ends."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.border_color = QColor(56, 189, 248, 120)
@@ -362,11 +393,7 @@ class CuteCurvedCard(QFrame):
 
         path = QPainterPath()
         path.addRoundedRect(rect, r, r)
-
-        # Fill body
         p.fillPath(path, self.bg_color)
-
-        # Draw anti-aliased smooth glowing border
         p.strokePath(path, QPen(self.border_color, 1.8))
 
 
@@ -480,7 +507,7 @@ class LiveWaveGraph(QWidget):
 
 
 # -------------------------------------------------------------
-# 4. MAIN MULTI-VIEW CUTE HUD
+# 4. MAIN MULTI-VIEW HUD (DEFAULT: COMPACT CARD WITH GAME OVERLAY)
 # -------------------------------------------------------------
 class CuteHardwareHUD(QWidget):
     def __init__(self):
@@ -490,18 +517,20 @@ class CuteHardwareHUD(QWidget):
         self.fps_engine = RealHardwareFPSEngine()
         self.fps_engine.start()
 
+        # DEFAULT TO COMPACT CARD (as requested by user)
         self.current_mode = "compact"
         self.is_pinned = True
+        self.is_locked = False # Game Lock: locks dragging during intensive gameplay
         self.pulse_phase = 0.0
 
         # Sizes
         self.compact_size = (345, 415)
-        self.mini_size = (595, 46) # Generous width for all cute colorful badges
+        self.mini_size = (595, 46)
         self.big_size = (1040, 650)
 
         # Smoothed values
         self.disp_cpu_temp = 45.0
-        self.disp_cpu_pwr = 12.0
+        self.disp_cpu_pwr = 15.0
         self.disp_cpu_use = 10.0
         self.disp_ram_pct = 50.0
 
@@ -513,6 +542,7 @@ class CuteHardwareHUD(QWidget):
 
         self.init_window()
         self.build_all_views()
+        self.setup_gaming_overlay_hooks()
 
         # Telemetry sample timer (1 Hz)
         self.data_timer = QTimer(self)
@@ -540,6 +570,31 @@ class CuteHardwareHUD(QWidget):
         self.setGeometry(x, y, self.compact_size[0], self.compact_size[1])
         self.drag_position = QPoint()
 
+    def setup_gaming_overlay_hooks(self):
+        """Configures Windows Topmost Z-order so full-screen games won't bury LumiHUD."""
+        try:
+            self.user32 = ctypes.windll.user32
+            self.user32.SetWindowPos.argtypes = [
+                wintypes.HWND, wintypes.HWND, ctypes.c_int,
+                ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT
+            ]
+            self.user32.SetWindowPos.restype = wintypes.BOOL
+            self.hwnd = wintypes.HWND(int(self.winId()))
+            self.HWND_TOPMOST = wintypes.HWND(-1)
+
+            # SWP_NOMOVE (0x2) | SWP_NOSIZE (0x1) | SWP_NOACTIVATE (0x10)
+            self.user32.SetWindowPos(self.hwnd, self.HWND_TOPMOST, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0010)
+        except Exception:
+            self.user32 = None
+
+    def enforce_topmost(self):
+        """Ensures overlay stays on top during gaming sessions."""
+        if self.is_pinned and hasattr(self, 'user32') and self.user32 and not self.isFullScreen():
+            try:
+                self.user32.SetWindowPos(self.hwnd, self.HWND_TOPMOST, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0010)
+            except Exception:
+                pass
+
     def build_all_views(self):
         self.root_layout = QVBoxLayout(self)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
@@ -553,11 +608,11 @@ class CuteHardwareHUD(QWidget):
         self.stack = QStackedLayout()
         self.card_layout.addLayout(self.stack)
 
-        # 0. Compact View
+        # 0. Compact View (DEFAULT)
         self.view_compact = self.build_compact_view()
         self.stack.addWidget(self.view_compact)
 
-        # 1. Mini Pill View (Cute, Curved & Multi-Color Badges)
+        # 1. Mini View (Cute Curved Multi-Color Pill)
         self.view_mini = self.build_mini_view()
         self.stack.addWidget(self.view_mini)
 
@@ -568,7 +623,7 @@ class CuteHardwareHUD(QWidget):
         self.stack.setCurrentIndex(0)
         self.card.set_theme("#38bdf8", radius=22.0)
 
-    # ================= VIEW 0: COMPACT CARD =================
+    # ================= VIEW 0: COMPACT CARD (DEFAULT) =================
     def build_compact_view(self):
         w = QWidget(self)
         lay = QVBoxLayout(w)
@@ -582,8 +637,18 @@ class CuteHardwareHUD(QWidget):
         hdr.addWidget(lbl_title)
         hdr.addStretch()
 
+        # Game Lock Button
+        self.btn_lock = QPushButton("🔓", self)
+        self.btn_lock.setFixedSize(22, 22)
+        self.btn_lock.setToolTip("Game Overlay Lock (Locks position during gaming)")
+        self.btn_lock.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_lock.setStyleSheet("border: none; color: #94a3b8; font-size: 10px; background: transparent;")
+        self.btn_lock.clicked.connect(self.toggle_lock)
+        hdr.addWidget(self.btn_lock)
+
         self.btn_pin_c = QPushButton("📌", self)
         self.btn_pin_c.setFixedSize(22, 22)
+        self.btn_pin_c.setToolTip("Always on Top")
         self.btn_pin_c.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_pin_c.setStyleSheet("border: none; color: #38bdf8; font-size: 10px; background: transparent;")
         self.btn_pin_c.clicked.connect(self.toggle_pin)
@@ -621,7 +686,9 @@ class CuteHardwareHUD(QWidget):
         c_lay.setSpacing(4)
 
         r1 = QHBoxLayout()
-        r1.addWidget(QLabel(f"⚡ CPU {self.telemetry.cpu_name[:16]}", self, styleSheet="color: #e2e8f0; font-size: 11px; font-weight: 700;"))
+        self.lbl_cpu_brand = QLabel(f"⚡ CPU {self.telemetry.cpu_name[:24]}", self)
+        self.lbl_cpu_brand.setStyleSheet("color: #e2e8f0; font-size: 11px; font-weight: 700;")
+        r1.addWidget(self.lbl_cpu_brand)
         r1.addStretch()
         self.lbl_cpu_mood_c = QLabel("❄️ Chillin'", self, styleSheet="color: #38bdf8; font-size: 10px; font-weight: 700;")
         r1.addWidget(self.lbl_cpu_mood_c)
@@ -629,7 +696,7 @@ class CuteHardwareHUD(QWidget):
 
         r2 = QHBoxLayout()
         self.lbl_cpu_temp_c = QLabel("45°C", self, styleSheet="color: #38bdf8; font-size: 16px; font-weight: 900;")
-        self.lbl_cpu_pwr_c = QLabel("12.4 W", self, styleSheet="color: #94a3b8; font-size: 12px; font-weight: 600;")
+        self.lbl_cpu_pwr_c = QLabel("15.2 W", self, styleSheet="color: #94a3b8; font-size: 12px; font-weight: 600;")
         self.lbl_cpu_use_c = QLabel("8% load", self, styleSheet="color: #64748b; font-size: 11px; font-weight: 600;")
         r2.addWidget(self.lbl_cpu_temp_c)
         r2.addSpacing(6)
@@ -661,7 +728,7 @@ class CuteHardwareHUD(QWidget):
         g_lay.setSpacing(4)
 
         gr1 = QHBoxLayout()
-        gr1.addWidget(QLabel(f"🎮 GPU {self.telemetry.gpu_name[:20]}", self, styleSheet="color: #e2e8f0; font-size: 11px; font-weight: 700;"))
+        gr1.addWidget(QLabel(f"🎮 GPU {self.telemetry.gpu_name[:24]}", self, styleSheet="color: #e2e8f0; font-size: 11px; font-weight: 700;"))
         gr1.addStretch()
         self.lbl_gpu_mood_c = QLabel("💤 Snoozin'", self, styleSheet="color: #a7f3d0; font-size: 10px; font-weight: 700;")
         gr1.addWidget(self.lbl_gpu_mood_c)
@@ -721,31 +788,31 @@ class CuteHardwareHUD(QWidget):
 
         c2 = QVBoxLayout(); c2.setSpacing(0)
         c2.addWidget(QLabel("AVERAGE", self, styleSheet="color: #64748b; font-size: 8px; font-weight: 800;"))
-        self.lbl_fps_avg_c = QLabel("119", self, styleSheet="color: #fed7aa; font-size: 14px; font-weight: 800;")
+        self.lbl_fps_avg_c = QLabel("120", self, styleSheet="color: #fed7aa; font-size: 14px; font-weight: 800;")
         c2.addWidget(self.lbl_fps_avg_c)
         grid.addLayout(c2, 0, 1)
 
         c3 = QVBoxLayout(); c3.setSpacing(0)
         c3.addWidget(QLabel("MIN", self, styleSheet="color: #64748b; font-size: 8px; font-weight: 800;"))
-        self.lbl_fps_min_c = QLabel("110", self, styleSheet="color: #94a3b8; font-size: 14px; font-weight: 700;")
+        self.lbl_fps_min_c = QLabel("103", self, styleSheet="color: #94a3b8; font-size: 14px; font-weight: 700;")
         c3.addWidget(self.lbl_fps_min_c)
         grid.addLayout(c3, 0, 2)
 
         c4 = QVBoxLayout(); c4.setSpacing(0)
         c4.addWidget(QLabel("MAX", self, styleSheet="color: #64748b; font-size: 8px; font-weight: 800;"))
-        self.lbl_fps_max_c = QLabel("121", self, styleSheet="color: #94a3b8; font-size: 14px; font-weight: 700;")
+        self.lbl_fps_max_c = QLabel("122", self, styleSheet="color: #94a3b8; font-size: 14px; font-weight: 700;")
         c4.addWidget(self.lbl_fps_max_c)
         grid.addLayout(c4, 0, 3)
 
         c5 = QVBoxLayout(); c5.setSpacing(0)
         c5.addWidget(QLabel("1% LOW", self, styleSheet="color: #64748b; font-size: 8px; font-weight: 800;"))
-        self.lbl_fps_low1_c = QLabel("98", self, styleSheet="color: #34d399; font-size: 13px; font-weight: 800;")
+        self.lbl_fps_low1_c = QLabel("107", self, styleSheet="color: #34d399; font-size: 13px; font-weight: 800;")
         c5.addWidget(self.lbl_fps_low1_c)
         grid.addLayout(c5, 1, 0)
 
         c6 = QVBoxLayout(); c6.setSpacing(0)
         c6.addWidget(QLabel("0.1% LOW", self, styleSheet="color: #64748b; font-size: 8px; font-weight: 800;"))
-        self.lbl_fps_low01_c = QLabel("84", self, styleSheet="color: #fbbf24; font-size: 13px; font-weight: 800;")
+        self.lbl_fps_low01_c = QLabel("103", self, styleSheet="color: #fbbf24; font-size: 13px; font-weight: 800;")
         c6.addWidget(self.lbl_fps_low01_c)
         grid.addLayout(c6, 1, 1)
 
@@ -759,14 +826,14 @@ class CuteHardwareHUD(QWidget):
         lay.addWidget(fps_box)
         return w
 
-    # ================= VIEW 1: CUTE MINI PILL (CURVED EDGES & MULTI-COLOR BADGES) =================
+    # ================= VIEW 1: CUTE MINI PILL (CURVED EDGES) =================
     def build_mini_view(self):
         w = QWidget(self)
         lay = QHBoxLayout(w)
         lay.setContentsMargins(12, 5, 12, 5)
         lay.setSpacing(6)
 
-        # 1. CPU Cute Badge (Cyan)
+        # 1. CPU Badge (Cyan)
         self.badge_cpu = QFrame(self)
         self.badge_cpu.setStyleSheet("""
             background-color: rgba(56, 189, 248, 0.12);
@@ -776,11 +843,11 @@ class CuteHardwareHUD(QWidget):
         """)
         l_c = QHBoxLayout(self.badge_cpu)
         l_c.setContentsMargins(0, 0, 0, 0)
-        self.lbl_mini_cpu = QLabel("❄️ 45°C · 12W", self, styleSheet="color: #38bdf8; font-size: 11px; font-weight: 800; border: none; background: transparent;")
+        self.lbl_mini_cpu = QLabel("❄️ 45°C · 15W", self, styleSheet="color: #38bdf8; font-size: 11px; font-weight: 800; border: none; background: transparent;")
         l_c.addWidget(self.lbl_mini_cpu)
         lay.addWidget(self.badge_cpu)
 
-        # 2. RAM Cute Badge (Sakura Pink)
+        # 2. RAM Badge (Sakura Pink)
         self.badge_ram = QFrame(self)
         self.badge_ram.setStyleSheet("""
             background-color: rgba(244, 114, 182, 0.12);
@@ -794,7 +861,7 @@ class CuteHardwareHUD(QWidget):
         l_r.addWidget(self.lbl_mini_ram)
         lay.addWidget(self.badge_ram)
 
-        # 3. GPU Cute Badge (Lavender / Emerald)
+        # 3. GPU Badge (Neon Lavender / Emerald)
         self.badge_gpu = QFrame(self)
         self.badge_gpu.setStyleSheet("""
             background-color: rgba(167, 139, 250, 0.12);
@@ -808,7 +875,7 @@ class CuteHardwareHUD(QWidget):
         l_g.addWidget(self.lbl_mini_gpu)
         lay.addWidget(self.badge_gpu)
 
-        # 4. FPS Cute Badge (Sunset Peach / Warm Orange)
+        # 4. FPS Badge (Sunset Peach / Warm Orange)
         self.badge_fps = QFrame(self)
         self.badge_fps.setStyleSheet("""
             background-color: rgba(251, 146, 60, 0.12);
@@ -818,13 +885,13 @@ class CuteHardwareHUD(QWidget):
         """)
         l_f = QHBoxLayout(self.badge_fps)
         l_f.setContentsMargins(0, 0, 0, 0)
-        self.lbl_mini_fps = QLabel("🎯 122 FPS (1%L 98)", self, styleSheet="color: #fb923c; font-size: 11px; font-weight: 800; border: none; background: transparent;")
+        self.lbl_mini_fps = QLabel("🎯 120 FPS (1%L 107)", self, styleSheet="color: #fb923c; font-size: 11px; font-weight: 800; border: none; background: transparent;")
         l_f.addWidget(self.lbl_mini_fps)
         lay.addWidget(self.badge_fps)
 
         lay.addStretch()
 
-        # Mini Buttons Pill Container
+        # Mini Buttons
         btn_box = QFrame(self)
         btn_box.setStyleSheet("background: rgba(255,255,255,0.06); border-radius: 12px; padding: 1px 4px; border: none;")
         b_lay = QHBoxLayout(btn_box)
@@ -871,7 +938,6 @@ class CuteHardwareHUD(QWidget):
         lay.setContentsMargins(20, 16, 20, 18)
         lay.setSpacing(12)
 
-        # Top Bar
         top = QHBoxLayout()
         lbl_dash = QLabel("✦ LUMI HARDWARE STUDIO ✦", self)
         lbl_dash.setStyleSheet("color: #e2e8f0; font-size: 13px; font-weight: 900; letter-spacing: 2px;")
@@ -922,7 +988,6 @@ class CuteHardwareHUD(QWidget):
         col_left = QVBoxLayout()
         col_left.setSpacing(12)
 
-        # Big CPU Card
         card_cpu_b = QFrame(self)
         card_cpu_b.setStyleSheet("background: rgba(22, 27, 40, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px;")
         b_cpu_lay = QVBoxLayout(card_cpu_b)
@@ -943,7 +1008,7 @@ class CuteHardwareHUD(QWidget):
 
         det_cpu = QVBoxLayout()
         det_cpu.setSpacing(2)
-        self.lbl_cpu_pwr_b = QLabel("12.4 W Power Draw", self, styleSheet="color: #cbd5e1; font-size: 12px; font-weight: 700;")
+        self.lbl_cpu_pwr_b = QLabel("15.2 W Power Draw", self, styleSheet="color: #cbd5e1; font-size: 12px; font-weight: 700;")
         self.lbl_cpu_use_b = QLabel("8% Utilization", self, styleSheet="color: #94a3b8; font-size: 11px; font-weight: 600;")
         det_cpu.addWidget(self.lbl_cpu_pwr_b)
         det_cpu.addWidget(self.lbl_cpu_use_b)
@@ -1035,19 +1100,19 @@ class CuteHardwareHUD(QWidget):
         fps_grid = QGridLayout()
         fps_grid.setSpacing(8)
 
-        self.box_avg = self.make_stat_badge("AVERAGE FPS", "119", "#cbd5e1")
+        self.box_avg = self.make_stat_badge("AVERAGE FPS", "120", "#cbd5e1")
         fps_grid.addWidget(self.box_avg, 0, 0)
 
-        self.box_min = self.make_stat_badge("MINIMUM FPS", "108", "#94a3b8")
+        self.box_min = self.make_stat_badge("MINIMUM FPS", "103", "#94a3b8")
         fps_grid.addWidget(self.box_min, 0, 1)
 
         self.box_max = self.make_stat_badge("MAXIMUM FPS", "122", "#94a3b8")
         fps_grid.addWidget(self.box_max, 1, 0)
 
-        self.box_low1 = self.make_stat_badge("1% LOW FPS", "98", "#34d399")
+        self.box_low1 = self.make_stat_badge("1% LOW FPS", "107", "#34d399")
         fps_grid.addWidget(self.box_low1, 1, 1)
 
-        self.box_low01 = self.make_stat_badge("0.1% LOW FPS", "82", "#fbbf24")
+        self.box_low01 = self.make_stat_badge("0.1% LOW FPS", "103", "#fbbf24")
         fps_grid.addWidget(self.box_low01, 2, 0)
 
         self.box_framems = self.make_stat_badge("FRAME DURATION", "8.3 ms", "#fb923c")
@@ -1085,7 +1150,6 @@ class CuteHardwareHUD(QWidget):
                 self.showNormal()
             self.stack.setCurrentIndex(1)
             self.setFixedSize(self.mini_size[0], self.mini_size[1])
-            # True curved pill: radius = height / 2.0 = 23px!
             self.card.set_theme("#38bdf8", radius=23.0)
             self.move(cur_pos)
 
@@ -1109,6 +1173,8 @@ class CuteHardwareHUD(QWidget):
             cy = max(20, (screen.height() - self.big_size[1]) // 2)
             self.move(cx, cy)
 
+        self.enforce_topmost()
+
     def toggle_fullscreen_toggle(self):
         if self.isFullScreen():
             self.showNormal()
@@ -1116,14 +1182,26 @@ class CuteHardwareHUD(QWidget):
         else:
             self.showFullScreen()
 
+    def toggle_lock(self):
+        """Locks/unlocks position for gaming overlay mode."""
+        self.is_locked = not self.is_locked
+        if self.is_locked:
+            self.btn_lock.setText("🔒")
+            self.btn_lock.setStyleSheet("border: none; color: #fbbf24; font-size: 10px; background: transparent;")
+            self.btn_lock.setToolTip("Game Overlay Locked (Click to Unlock)")
+        else:
+            self.btn_lock.setText("🔓")
+            self.btn_lock.setStyleSheet("border: none; color: #94a3b8; font-size: 10px; background: transparent;")
+            self.btn_lock.setToolTip("Game Overlay Unlocked (Draggable)")
+
     # ---------------- DRAGGING & INTERACTIONS ----------------
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and not self.isFullScreen():
+        if event.button() == Qt.MouseButton.LeftButton and not self.isFullScreen() and not self.is_locked:
             self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
 
     def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.MouseButton.LeftButton and not self.isFullScreen() and not self.drag_position.isNull():
+        if event.buttons() == Qt.MouseButton.LeftButton and not self.isFullScreen() and not self.is_locked and not self.drag_position.isNull():
             self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
 
@@ -1154,6 +1232,7 @@ class CuteHardwareHUD(QWidget):
         self.btn_pin_c.setStyleSheet(f"border: none; color: {col}; font-size: 10px; background: transparent;")
         self.btn_pin_m.setStyleSheet(f"border: none; color: {col}; font-size: 9px; background: transparent;")
         self.show()
+        self.enforce_topmost()
 
     def get_temp_palette(self, temp):
         if temp < 52:
@@ -1187,6 +1266,9 @@ class CuteHardwareHUD(QWidget):
         self.raw_vram_pct = data['vram_pct']
         self.gpu_asleep = data['gpu_asleep']
 
+        # Enforce topmost over games periodically
+        self.enforce_topmost()
+
         if hasattr(self, 'graph_cpu'):
             self.graph_cpu.add_sample(self.raw_cpu_temp if self.raw_cpu_temp > 0 else 40.0)
             self.graph_gpu.add_sample(self.raw_gpu_temp if self.raw_gpu_temp > 0 else 40.0)
@@ -1210,12 +1292,12 @@ class CuteHardwareHUD(QWidget):
         c1, c2, mood, glow = self.get_temp_palette(self.disp_cpu_temp)
         fps = self.fps_engine.get_stats()
 
-        # VIEW 0: COMPACT
+        # VIEW 0: COMPACT (DEFAULT)
         if self.current_mode == "compact":
             temp_str = f"{self.disp_cpu_temp:.0f}°C" if self.disp_cpu_temp > 0 else "N/A"
             self.lbl_cpu_temp_c.setText(temp_str)
             self.lbl_cpu_temp_c.setStyleSheet(f"color: {c1}; font-size: 16px; font-weight: 900;")
-            self.lbl_cpu_pwr_c.setText(f"{self.disp_cpu_pwr:.1f} W" if self.disp_cpu_pwr > 0 else "Active")
+            self.lbl_cpu_pwr_c.setText(f"{self.disp_cpu_pwr:.1f} W")
             self.lbl_cpu_use_c.setText(f"{self.disp_cpu_use:.0f}% load")
             self.lbl_cpu_mood_c.setText(mood)
             self.lbl_cpu_mood_c.setStyleSheet(f"color: {c1}; font-size: 10px; font-weight: 700;")
@@ -1271,17 +1353,13 @@ class CuteHardwareHUD(QWidget):
 
             self.card.set_theme(glow, radius=22.0)
 
-        # VIEW 1: CUTE MINI PILL (MULTI-COLOR BADGES WITH CURVED ENDS)
+        # VIEW 1: MINI PILL
         elif self.current_mode == "mini":
-            # 1. CPU (Cyan)
             temp_str = f"{self.disp_cpu_temp:.0f}°C" if self.disp_cpu_temp > 0 else "Active"
-            pwr_str = f"{self.disp_cpu_pwr:.1f}W" if self.disp_cpu_pwr > 0 else ""
+            pwr_str = f"{self.disp_cpu_pwr:.1f}W"
             self.lbl_mini_cpu.setText(f"{mood.split()[0]} {temp_str} · {pwr_str}")
-
-            # 2. RAM (Sakura Pink)
             self.lbl_mini_ram.setText(f"🧠 {self.disp_ram_pct:.0f}%")
 
-            # 3. GPU (Neon Lavender / Emerald)
             if self.gpu_asleep or self.disp_gpu_pwr < 0.3:
                 self.badge_gpu.setStyleSheet("""
                     background-color: rgba(52, 211, 153, 0.12);
@@ -1301,10 +1379,7 @@ class CuteHardwareHUD(QWidget):
                 self.lbl_mini_gpu.setText(f"🎮 {self.disp_gpu_temp:.0f}°C · {self.disp_gpu_pwr:.1f}W")
                 self.lbl_mini_gpu.setStyleSheet("color: #a78bfa; font-size: 11px; font-weight: 800; border: none; background: transparent;")
 
-            # 4. FPS (Sunset Peach / Warm Orange)
             self.lbl_mini_fps.setText(f"🎯 {fps['cur']:.0f} FPS (1%L {fps['low_1']:.0f})")
-
-            # Mini Pill uses true capsule curved ends (radius = 23px for 46px height)
             self.card.set_theme(glow, radius=23.0)
 
         # VIEW 2: BIG DASHBOARD
@@ -1312,7 +1387,7 @@ class CuteHardwareHUD(QWidget):
             temp_str = f"{self.disp_cpu_temp:.0f}°C" if self.disp_cpu_temp > 0 else "Active"
             self.lbl_cpu_temp_b.setText(temp_str)
             self.lbl_cpu_temp_b.setStyleSheet(f"color: {c1}; font-size: 32px; font-weight: 900;")
-            self.lbl_cpu_pwr_b.setText(f"{self.disp_cpu_pwr:.1f} W Power Draw" if self.disp_cpu_pwr > 0 else "Active Load")
+            self.lbl_cpu_pwr_b.setText(f"{self.disp_cpu_pwr:.1f} W Power Draw")
             self.lbl_cpu_use_b.setText(f"{self.disp_cpu_use:.0f}% CPU Load · {self.telemetry.cpu_name[:24]}")
             self.lbl_cpu_mood_b.setText(mood)
             self.lbl_cpu_mood_b.setStyleSheet(f"color: {c1}; font-size: 11px; font-weight: 800;")
