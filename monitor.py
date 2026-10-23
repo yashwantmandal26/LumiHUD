@@ -27,11 +27,6 @@ from PyQt6.QtGui import (
 # 1. 100% GENUINE HARDWARE SCANOUT & VBLANK FPS ENGINE
 # -------------------------------------------------------------
 class RealHardwareFPSEngine(threading.Thread):
-    """
-    Measures 100% genuine hardware display presentation and VBlank intervals
-    directly from physical graphics card scanout signals (IDXGIOutput::WaitForVBlank).
-    Zero fake timers or simulated loops.
-    """
     def __init__(self):
         super().__init__(daemon=True)
         self.running = True
@@ -83,7 +78,7 @@ class RealHardwareFPSEngine(threading.Thread):
 
     def run(self):
         t_prev = time.perf_counter()
-        warmup = 30 # Discard first 30 frames to eliminate launch anomalies
+        warmup = 30
 
         while self.running:
             if self.dxgi_ok and self.fn_WaitForVBlank:
@@ -154,7 +149,7 @@ class RealHardwareFPSEngine(threading.Thread):
 
 
 # -------------------------------------------------------------
-# 2. UNIVERSAL HARDWARE TELEMETRY (DYNAMIC MULTI-LAPTOP)
+# 2. UNIVERSAL HARDWARE TELEMETRY
 # -------------------------------------------------------------
 class UniversalHardwareTelemetry:
     def __init__(self):
@@ -167,12 +162,10 @@ class UniversalHardwareTelemetry:
         self.init_gpu_interfaces()
 
     def detect_cpu_name(self):
-        """Reads clean real marketing name across any Intel or AMD PC."""
         try:
             key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'HARDWARE\DESCRIPTION\System\CentralProcessor\0')
             name, _ = winreg.QueryValueEx(key, 'ProcessorNameString')
             clean = name.replace('(R)', '').replace('(TM)', '').replace('Processor', '').strip()
-            # Remove redundant multi-spaces
             clean = " ".join(clean.split())
             if clean:
                 return clean
@@ -228,7 +221,6 @@ class UniversalHardwareTelemetry:
                     f"\\Energy Meter({target_inst})\\Power"
                 )
                 win32pdh.CollectQueryData(self.power_hq)
-                # Prime with a sample
                 time.sleep(0.05)
                 win32pdh.CollectQueryData(self.power_hq)
                 _, p_val = win32pdh.GetFormattedCounterValue(self.power_counter, win32pdh.PDH_FMT_DOUBLE)
@@ -267,7 +259,6 @@ class UniversalHardwareTelemetry:
                 self.gpu_name = "Integrated Graphics"
 
     def sample(self):
-        # 1. CPU Temperature
         cpu_temp = 0.0
         if self.thermal_hq and self.thermal_counters:
             try:
@@ -287,7 +278,6 @@ class UniversalHardwareTelemetry:
             except Exception:
                 pass
 
-        # 2. CPU Power Draw (Wattage)
         cpu_power = self.last_cpu_power
         if self.power_hq and self.power_counter:
             try:
@@ -369,7 +359,7 @@ class UniversalHardwareTelemetry:
 
 
 # -------------------------------------------------------------
-# 3. CUSTOM CURVED CONTAINER WITH ANTIALIASED ROUNDED EDGES
+# 3. CUSTOM CURVED CONTAINER
 # -------------------------------------------------------------
 class CuteCurvedCard(QFrame):
     def __init__(self, parent=None):
@@ -507,7 +497,7 @@ class LiveWaveGraph(QWidget):
 
 
 # -------------------------------------------------------------
-# 4. MAIN MULTI-VIEW HUD (DEFAULT: COMPACT CARD WITH GAME OVERLAY)
+# 4. MAIN MULTI-VIEW HUD (3 CLEAN SIZE BUTTONS: PILL, CARD, STUDIO)
 # -------------------------------------------------------------
 class CuteHardwareHUD(QWidget):
     def __init__(self):
@@ -517,10 +507,8 @@ class CuteHardwareHUD(QWidget):
         self.fps_engine = RealHardwareFPSEngine()
         self.fps_engine.start()
 
-        # DEFAULT TO COMPACT CARD (as requested by user)
+        # DEFAULT TO COMPACT CARD
         self.current_mode = "compact"
-        self.is_pinned = True
-        self.is_locked = False # Game Lock: locks dragging during intensive gameplay
         self.pulse_phase = 0.0
 
         # Sizes
@@ -539,6 +527,9 @@ class CuteHardwareHUD(QWidget):
         self.disp_gpu_use = 5.0
         self.disp_vram_pct = 20.0
         self.gpu_asleep = False
+
+        # Button registries across views for clean synchronization
+        self.mode_buttons = {"pill": [], "card": [], "studio": []}
 
         self.init_window()
         self.build_all_views()
@@ -571,7 +562,7 @@ class CuteHardwareHUD(QWidget):
         self.drag_position = QPoint()
 
     def setup_gaming_overlay_hooks(self):
-        """Configures Windows Topmost Z-order so full-screen games won't bury LumiHUD."""
+        """Hardware-level top-most z-order so games never bury LumiHUD."""
         try:
             self.user32 = ctypes.windll.user32
             self.user32.SetWindowPos.argtypes = [
@@ -588,18 +579,97 @@ class CuteHardwareHUD(QWidget):
             self.user32 = None
 
     def enforce_topmost(self):
-        """Ensures overlay stays on top during gaming sessions."""
-        if self.is_pinned and hasattr(self, 'user32') and self.user32 and not self.isFullScreen():
+        if hasattr(self, 'user32') and self.user32 and not self.isFullScreen():
             try:
                 self.user32.SetWindowPos(self.hwnd, self.HWND_TOPMOST, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0010)
             except Exception:
                 pass
 
+    # ---------------- BUILD 3-BUTTON MODE CONTROLLER ----------------
+    def create_mode_switcher(self, has_labels=False):
+        """Creates the unified, simple 3-button switcher: [ 💊 Pill ] [ 🗂️ Card ] [ 📺 Studio ] [ ✕ ]"""
+        box = QFrame(self)
+        box.setStyleSheet("background: rgba(255,255,255,0.06); border-radius: 12px; padding: 1px 3px; border: none;")
+        lay = QHBoxLayout(box)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(3)
+
+        btn_pill = QPushButton("💊 Pill" if has_labels else "💊", self)
+        btn_pill.setToolTip("1. Mini Pill Mode (Ultra-slim floating capsule)")
+        btn_pill.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_pill.clicked.connect(lambda: self.switch_mode("mini"))
+        self.mode_buttons["pill"].append(btn_pill)
+        lay.addWidget(btn_pill)
+
+        btn_card = QPushButton("🗂️ Card" if has_labels else "🗂️", self)
+        btn_card.setToolTip("2. Compact Card Mode (Default floating overlay)")
+        btn_card.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_card.clicked.connect(lambda: self.switch_mode("compact"))
+        self.mode_buttons["card"].append(btn_card)
+        lay.addWidget(btn_card)
+
+        btn_studio = QPushButton("📺 Studio" if has_labels else "📺", self)
+        btn_studio.setToolTip("3. Big Studio Dashboard (Spacious view & live waveforms)")
+        btn_studio.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_studio.clicked.connect(lambda: self.switch_mode("big"))
+        self.mode_buttons["studio"].append(btn_studio)
+        lay.addWidget(btn_studio)
+
+        btn_close = QPushButton("✕", self)
+        btn_close.setToolTip("Close LumiHUD")
+        btn_close.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_close.setStyleSheet("""
+            QPushButton {
+                border: none; color: #fb7185; font-size: 11px; font-weight: bold;
+                padding: 3px 6px; border-radius: 8px; background: transparent;
+            }
+            QPushButton:hover { background: rgba(251, 113, 133, 0.25); }
+        """)
+        btn_close.clicked.connect(self.close)
+        lay.addWidget(btn_close)
+
+        return box
+
+    def sync_mode_button_styles(self):
+        """Highlights the active size button while keeping inactive ones clean and subtle."""
+        active_style = """
+            QPushButton {
+                background: rgba(56, 189, 248, 0.28);
+                color: #38bdf8;
+                border: 1px solid rgba(56, 189, 248, 0.4);
+                border-radius: 8px;
+                font-size: 11px;
+                font-weight: 800;
+                padding: 3px 8px;
+            }
+        """
+        inactive_style = """
+            QPushButton {
+                background: transparent;
+                color: #94a3b8;
+                border: none;
+                border-radius: 8px;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 3px 7px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.12);
+                color: #e2e8f0;
+            }
+        """
+
+        for btn in self.mode_buttons["pill"]:
+            btn.setStyleSheet(active_style if self.current_mode == "mini" else inactive_style)
+        for btn in self.mode_buttons["card"]:
+            btn.setStyleSheet(active_style if self.current_mode == "compact" else inactive_style)
+        for btn in self.mode_buttons["studio"]:
+            btn.setStyleSheet(active_style if self.current_mode == "big" else inactive_style)
+
     def build_all_views(self):
         self.root_layout = QVBoxLayout(self)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Outer custom curved card
         self.card = CuteCurvedCard(self)
         self.card_layout = QVBoxLayout(self.card)
         self.card_layout.setContentsMargins(0, 0, 0, 0)
@@ -622,6 +692,7 @@ class CuteHardwareHUD(QWidget):
 
         self.stack.setCurrentIndex(0)
         self.card.set_theme("#38bdf8", radius=22.0)
+        self.sync_mode_button_styles()
 
     # ================= VIEW 0: COMPACT CARD (DEFAULT) =================
     def build_compact_view(self):
@@ -630,52 +701,16 @@ class CuteHardwareHUD(QWidget):
         lay.setContentsMargins(14, 12, 14, 14)
         lay.setSpacing(8)
 
-        # Header Bar
+        # Header Bar: Title + Simple 3-Button Switcher
         hdr = QHBoxLayout()
         lbl_title = QLabel("✧ LUMI MONITOR ✧", self)
         lbl_title.setStyleSheet("color: #94a3b8; font-size: 10px; font-weight: 800; letter-spacing: 1.5px;")
         hdr.addWidget(lbl_title)
         hdr.addStretch()
 
-        # Game Lock Button
-        self.btn_lock = QPushButton("🔓", self)
-        self.btn_lock.setFixedSize(22, 22)
-        self.btn_lock.setToolTip("Game Overlay Lock (Locks position during gaming)")
-        self.btn_lock.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.btn_lock.setStyleSheet("border: none; color: #94a3b8; font-size: 10px; background: transparent;")
-        self.btn_lock.clicked.connect(self.toggle_lock)
-        hdr.addWidget(self.btn_lock)
-
-        self.btn_pin_c = QPushButton("📌", self)
-        self.btn_pin_c.setFixedSize(22, 22)
-        self.btn_pin_c.setToolTip("Always on Top")
-        self.btn_pin_c.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.btn_pin_c.setStyleSheet("border: none; color: #38bdf8; font-size: 10px; background: transparent;")
-        self.btn_pin_c.clicked.connect(self.toggle_pin)
-        hdr.addWidget(self.btn_pin_c)
-
-        btn_mini_c = QPushButton("⎯", self)
-        btn_mini_c.setFixedSize(22, 22)
-        btn_mini_c.setToolTip("Mini Pill Mode")
-        btn_mini_c.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_mini_c.setStyleSheet("border: none; color: #94a3b8; font-size: 12px; font-weight: bold; background: transparent;")
-        btn_mini_c.clicked.connect(lambda: self.switch_mode("mini"))
-        hdr.addWidget(btn_mini_c)
-
-        btn_big_c = QPushButton("⛶", self)
-        btn_big_c.setFixedSize(22, 22)
-        btn_big_c.setToolTip("Full Screen Comfort Studio")
-        btn_big_c.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_big_c.setStyleSheet("border: none; color: #94a3b8; font-size: 12px; font-weight: bold; background: transparent;")
-        btn_big_c.clicked.connect(lambda: self.switch_mode("big"))
-        hdr.addWidget(btn_big_c)
-
-        btn_close_c = QPushButton("✕", self)
-        btn_close_c.setFixedSize(22, 22)
-        btn_close_c.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_close_c.setStyleSheet("border: none; color: #94a3b8; font-size: 11px; font-weight: bold; background: transparent;")
-        btn_close_c.clicked.connect(self.close)
-        hdr.addWidget(btn_close_c)
+        # 3 Clean Buttons for the 3 Screen Sizes
+        switcher = self.create_mode_switcher(has_labels=False)
+        hdr.addWidget(switcher)
         lay.addLayout(hdr)
 
         # CPU & RAM Box
@@ -891,44 +926,9 @@ class CuteHardwareHUD(QWidget):
 
         lay.addStretch()
 
-        # Mini Buttons
-        btn_box = QFrame(self)
-        btn_box.setStyleSheet("background: rgba(255,255,255,0.06); border-radius: 12px; padding: 1px 4px; border: none;")
-        b_lay = QHBoxLayout(btn_box)
-        b_lay.setContentsMargins(0, 0, 0, 0)
-        b_lay.setSpacing(2)
-
-        self.btn_pin_m = QPushButton("📌", self)
-        self.btn_pin_m.setFixedSize(20, 20)
-        self.btn_pin_m.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.btn_pin_m.setStyleSheet("border: none; color: #38bdf8; font-size: 9px; background: transparent;")
-        self.btn_pin_m.clicked.connect(self.toggle_pin)
-        b_lay.addWidget(self.btn_pin_m)
-
-        btn_expand_m = QPushButton("⊞", self)
-        btn_expand_m.setFixedSize(20, 20)
-        btn_expand_m.setToolTip("Return to Normal Widget")
-        btn_expand_m.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_expand_m.setStyleSheet("border: none; color: #c084fc; font-size: 11px; font-weight: bold; background: transparent;")
-        btn_expand_m.clicked.connect(lambda: self.switch_mode("compact"))
-        b_lay.addWidget(btn_expand_m)
-
-        btn_big_m = QPushButton("⛶", self)
-        btn_big_m.setFixedSize(20, 20)
-        btn_big_m.setToolTip("Full Screen Comfort Studio")
-        btn_big_m.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_big_m.setStyleSheet("border: none; color: #38bdf8; font-size: 11px; font-weight: bold; background: transparent;")
-        btn_big_m.clicked.connect(lambda: self.switch_mode("big"))
-        b_lay.addWidget(btn_big_m)
-
-        btn_close_m = QPushButton("✕", self)
-        btn_close_m.setFixedSize(20, 20)
-        btn_close_m.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_close_m.setStyleSheet("border: none; color: #fb7185; font-size: 10px; font-weight: bold; background: transparent;")
-        btn_close_m.clicked.connect(self.close)
-        b_lay.addWidget(btn_close_m)
-
-        lay.addWidget(btn_box)
+        # 3 Clean Buttons for the 3 Screen Sizes
+        switcher = self.create_mode_switcher(has_labels=False)
+        lay.addWidget(switcher)
         return w
 
     # ================= VIEW 2: BIG VISUAL COMFORT DASHBOARD =================
@@ -938,6 +938,7 @@ class CuteHardwareHUD(QWidget):
         lay.setContentsMargins(20, 16, 20, 18)
         lay.setSpacing(12)
 
+        # Top Bar: Title + Simple 3-Button Switcher
         top = QHBoxLayout()
         lbl_dash = QLabel("✦ LUMI HARDWARE STUDIO ✦", self)
         lbl_dash.setStyleSheet("color: #e2e8f0; font-size: 13px; font-weight: 900; letter-spacing: 2px;")
@@ -948,38 +949,9 @@ class CuteHardwareHUD(QWidget):
         top.addWidget(self.lbl_badge_b)
         top.addStretch()
 
-        btn_restore_b = QPushButton("🗗 Restore Normal", self)
-        btn_restore_b.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_restore_b.setStyleSheet("""
-            QPushButton {
-                background: rgba(255,255,255,0.08); color: #e2e8f0;
-                border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
-                font-size: 11px; font-weight: 700; padding: 5px 12px;
-            }
-            QPushButton:hover { background: rgba(56,189,248,0.25); color: #38bdf8; }
-        """)
-        btn_restore_b.clicked.connect(lambda: self.switch_mode("compact"))
-        top.addWidget(btn_restore_b)
-
-        btn_fs_b = QPushButton("⛶ Fullscreen", self)
-        btn_fs_b.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_fs_b.setStyleSheet("""
-            QPushButton {
-                background: rgba(255,255,255,0.08); color: #e2e8f0;
-                border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
-                font-size: 11px; font-weight: 700; padding: 5px 12px;
-            }
-            QPushButton:hover { background: rgba(56,189,248,0.25); color: #38bdf8; }
-        """)
-        btn_fs_b.clicked.connect(self.toggle_fullscreen_toggle)
-        top.addWidget(btn_fs_b)
-
-        btn_close_b = QPushButton("✕", self)
-        btn_close_b.setFixedSize(28, 28)
-        btn_close_b.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_close_b.setStyleSheet("border: none; color: #94a3b8; font-size: 14px; font-weight: bold; background: transparent;")
-        btn_close_b.clicked.connect(self.close)
-        top.addWidget(btn_close_b)
+        # 3 Clean Buttons for the 3 Screen Sizes (with clear labels)
+        switcher = self.create_mode_switcher(has_labels=True)
+        top.addWidget(switcher)
         lay.addLayout(top)
 
         split = QHBoxLayout()
@@ -988,6 +960,7 @@ class CuteHardwareHUD(QWidget):
         col_left = QVBoxLayout()
         col_left.setSpacing(12)
 
+        # Big CPU Card
         card_cpu_b = QFrame(self)
         card_cpu_b.setStyleSheet("background: rgba(22, 27, 40, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px;")
         b_cpu_lay = QVBoxLayout(card_cpu_b)
@@ -1091,7 +1064,7 @@ class CuteHardwareHUD(QWidget):
         tag_col = QVBoxLayout()
         tag_col.setSpacing(2)
         tag_col.addWidget(QLabel("HARDWARE PRESENTATION FPS", self, styleSheet="color: #64748b; font-size: 10px; font-weight: 800;"))
-        self.lbl_pacing_b = QLabel("🟢 Fluid Pacing", self, styleSheet="color: #a7f3d0; font-size: 12px; font-weight: 800;")
+        self.lbl_pacing_b = QLabel("🟢 Fluid Hardware Pacing", self, styleSheet="color: #a7f3d0; font-size: 12px; font-weight: 800;")
         tag_col.addWidget(self.lbl_pacing_b)
         cur_row.addLayout(tag_col)
         cur_row.addStretch()
@@ -1173,35 +1146,17 @@ class CuteHardwareHUD(QWidget):
             cy = max(20, (screen.height() - self.big_size[1]) // 2)
             self.move(cx, cy)
 
+        self.sync_mode_button_styles()
         self.enforce_topmost()
-
-    def toggle_fullscreen_toggle(self):
-        if self.isFullScreen():
-            self.showNormal()
-            self.resize(self.big_size[0], self.big_size[1])
-        else:
-            self.showFullScreen()
-
-    def toggle_lock(self):
-        """Locks/unlocks position for gaming overlay mode."""
-        self.is_locked = not self.is_locked
-        if self.is_locked:
-            self.btn_lock.setText("🔒")
-            self.btn_lock.setStyleSheet("border: none; color: #fbbf24; font-size: 10px; background: transparent;")
-            self.btn_lock.setToolTip("Game Overlay Locked (Click to Unlock)")
-        else:
-            self.btn_lock.setText("🔓")
-            self.btn_lock.setStyleSheet("border: none; color: #94a3b8; font-size: 10px; background: transparent;")
-            self.btn_lock.setToolTip("Game Overlay Unlocked (Draggable)")
 
     # ---------------- DRAGGING & INTERACTIONS ----------------
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and not self.isFullScreen() and not self.is_locked:
+        if event.button() == Qt.MouseButton.LeftButton and not self.isFullScreen():
             self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
 
     def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.MouseButton.LeftButton and not self.isFullScreen() and not self.is_locked and not self.drag_position.isNull():
+        if event.buttons() == Qt.MouseButton.LeftButton and not self.isFullScreen() and not self.drag_position.isNull():
             self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
 
@@ -1223,16 +1178,6 @@ class CuteHardwareHUD(QWidget):
         elif event.key() == Qt.Key.Key_F11:
             if self.current_mode != "big":
                 self.switch_mode("big")
-            self.toggle_fullscreen_toggle()
-
-    def toggle_pin(self):
-        self.is_pinned = not self.is_pinned
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, self.is_pinned)
-        col = "#38bdf8" if self.is_pinned else "#64748b"
-        self.btn_pin_c.setStyleSheet(f"border: none; color: {col}; font-size: 10px; background: transparent;")
-        self.btn_pin_m.setStyleSheet(f"border: none; color: {col}; font-size: 9px; background: transparent;")
-        self.show()
-        self.enforce_topmost()
 
     def get_temp_palette(self, temp):
         if temp < 52:
@@ -1266,7 +1211,6 @@ class CuteHardwareHUD(QWidget):
         self.raw_vram_pct = data['vram_pct']
         self.gpu_asleep = data['gpu_asleep']
 
-        # Enforce topmost over games periodically
         self.enforce_topmost()
 
         if hasattr(self, 'graph_cpu'):

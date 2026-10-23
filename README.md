@@ -31,7 +31,7 @@ A sleek, modern, and cute desktop overlay HUD designed for developers, gamers, a
       <td align="center" valign="middle">
         <img src="assets/compact_card.png" alt="LumiHUD Compact Card" width="330"/>
         <br/>
-        <sub><i>Compact widget with Game Lock <code>[🔒]</code> and Always-on-Top <code>[📌]</code></i></sub>
+        <sub><i>Compact widget with seamless 3-mode switcher (<code>[💊]</code> <code>[🗂️]</code> <code>[📺]</code>)</i></sub>
       </td>
       <td align="center" valign="middle">
         <img src="assets/studio_dashboard.png" alt="LumiHUD Studio Dashboard" width="580"/>
@@ -56,10 +56,10 @@ A sleek, modern, and cute desktop overlay HUD designed for developers, gamers, a
   * Intel & AMD RAPL hardware package power registers (Wattage).
   * NVIDIA NVML C-library (live wattage, temperature, and deep sleep detection).
   * Windows Kernel Memory Manager (RAM & VRAM).
-* **🎮 Full Gaming Overlay Support:**
+* **🎮 Seamless Gaming Overlay Support:**
   * **Win32 `SetWindowPos` TopMost Hooks:** Stays persistently on top of full-screen borderless games (GTA V, Battlefield, Cyberpunk, etc.) without getting buried.
-  * **`[🔒]` Game Overlay Lock:** One-click lock to prevent accidental dragging during fast mouse movement and aiming.
-  * **`WS_EX_NOACTIVATE`:** Clicking on the overlay will never steal keyboard or controller focus from the game.
+  * **Unified 3-Button Mode Switcher:** Clean `[💊 Pill]` `[🗂️ Card]` `[📺 Studio]` buttons across all sizes with zero confusing icons.
+  * **`WS_EX_NOACTIVATE`:** Overlay keeps gaming mouse and keyboard input fluid without stealing window focus.
 * **Full Gaming & Display FPS Suite:**
   * **Current FPS:** Real-time display presentation rate.
   * **Average FPS:** Session mean framerate.
