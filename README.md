@@ -11,10 +11,43 @@ A sleek, modern, and cute desktop overlay HUD designed for developers, gamers, a
 
 ---
 
+## 📸 Screenshots & Showcase
+
+<div align="center">
+  <h3>💊 Cute Curved Multi-Color Mini Pill Mode</h3>
+  <img src="assets/mini_pill.png" alt="LumiHUD Mini Pill Mode" width="650"/>
+  <p><i>Ultra-slim floating capsule bar with individual color chips for CPU, RAM, GPU, and FPS.</i></p>
+</div>
+
+<br/>
+
+<div align="center">
+  <table>
+    <tr>
+      <th align="center">🗂️ Default Compact Floating Overlay</th>
+      <th align="center">📺 Big Visual Comfort Studio Dashboard</th>
+    </tr>
+    <tr>
+      <td align="center" valign="middle">
+        <img src="assets/compact_card.png" alt="LumiHUD Compact Card" width="330"/>
+        <br/>
+        <sub><i>Compact widget with Game Lock <code>[🔒]</code> and Always-on-Top <code>[📌]</code></i></sub>
+      </td>
+      <td align="center" valign="middle">
+        <img src="assets/studio_dashboard.png" alt="LumiHUD Studio Dashboard" width="580"/>
+        <br/>
+        <sub><i>Full dashboard with live 60-second waveform history charts</i></sub>
+      </td>
+    </tr>
+  </table>
+</div>
+
+---
+
 ## ✨ Features at a Glance
 
 * **3 Versatile Views:**
-  * **💊 Mini Pill Mode (Dynamic Island):** Single horizontal capsule bar (`595 × 46px`) with true circular pill edges and distinct color chips. Fits unobtrusively on any screen edge.
+  * **💊 Mini Pill Mode (Dynamic Island):** Single horizontal capsule bar with true circular pill edges and distinct color chips. Fits unobtrusively on any screen edge.
   * **🗂️ Compact Floating Card (Default):** Aesthetic floating widget with quick stats, progress bars, and gaming consistency metrics.
   * **📺 Big Visual Comfort Studio (Fullscreen / 1040 × 650):** Expansive dashboard with 48px large typography and **live 60-second real-time waveform history charts** for CPU temp, GPU temp, and frame pacing.
 * **100% Genuine Hardware Telemetry (Zero Fake Data):**
@@ -23,6 +56,10 @@ A sleek, modern, and cute desktop overlay HUD designed for developers, gamers, a
   * Intel & AMD RAPL hardware package power registers (Wattage).
   * NVIDIA NVML C-library (live wattage, temperature, and deep sleep detection).
   * Windows Kernel Memory Manager (RAM & VRAM).
+* **🎮 Full Gaming Overlay Support:**
+  * **Win32 `SetWindowPos` TopMost Hooks:** Stays persistently on top of full-screen borderless games (GTA V, Battlefield, Cyberpunk, etc.) without getting buried.
+  * **`[🔒]` Game Overlay Lock:** One-click lock to prevent accidental dragging during fast mouse movement and aiming.
+  * **`WS_EX_NOACTIVATE`:** Clicking on the overlay will never steal keyboard or controller focus from the game.
 * **Full Gaming & Display FPS Suite:**
   * **Current FPS:** Real-time display presentation rate.
   * **Average FPS:** Session mean framerate.
@@ -70,8 +107,9 @@ pythonw monitor.py
 
 | Shortcut / Action | Function |
 | :--- | :--- |
+| **`[🔒]` / `[🔓]`** | **Game Lock:** Lock/unlock HUD position during gaming |
 | **`[⎯]` button** or **Double-Click** | Switch to **Mini Pill Mode** (sleek horizontal capsule) |
-| **`[⊞]` button** or **Double-Click** | Return to **Compact Card Widget** |
+| **`[⊞]` button** or **Double-Click** | Return to **Compact Card Widget** (default view) |
 | **`[⛶]` button** or **`F11`** | Expand to **Big Visual Comfort Studio / Fullscreen** |
 | **`ESC` key** | Instantly return from Big Studio to Compact Card |
 | **`[📌]` Pin** | Toggle **Always-on-Top** |
@@ -95,13 +133,17 @@ Unlike basic overlays that estimate frame rates using synthetic `time.sleep()` l
 
 ```
 LumiHUD/
+├── assets/                 # Screenshots & visual assets
+│   ├── compact_card.png    # Default floating card screenshot
+│   ├── mini_pill.png       # Cute curved mini pill screenshot
+│   └── studio_dashboard.png# Big visual comfort dashboard screenshot
 ├── monitor.py              # Core application (PyQt6 HUD + DXGI & PDH engines)
 ├── Setup_And_Run.bat       # 1-Click automated installer & desktop shortcut creator
 ├── Run_Monitor.bat         # Fast silent launcher (pythonw)
 ├── Stop_Monitor.bat        # Clean process terminator
 ├── requirements.txt        # Minimal dependencies (PyQt6, psutil, pywin32)
 ├── LICENSE                 # MIT Open-Source License
-└── README.md               # Documentation & guide
+└── README.md               # Documentation & showcase
 ```
 
 ---
