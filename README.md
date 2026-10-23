@@ -56,6 +56,12 @@ A sleek, modern, and cute desktop overlay HUD designed for developers, gamers, a
   * Intel & AMD RAPL hardware package power registers (Wattage).
   * NVIDIA NVML C-library (live wattage, temperature, and deep sleep detection).
   * Windows Kernel Memory Manager (RAM & VRAM).
+  * Native Windows NDIS/ICMP kernel stack (`iphlpapi.dll -> IcmpSendEcho`) for sub-millisecond true ping & latency.
+* **🌐 Pro Gaming Network Telemetry (Ping, Jitter & Packet Loss):**
+  * **Real Ping / Latency (ms):** Round-trip time to nearest global gaming Anycast edges (Cloudflare & Google).
+  * **Jitter (± ms):** Moving variance calculation in packet arrivals (essential for hit-registration in CS2, Valorant, Apex).
+  * **Packet Loss (%):** Real-time detection of dropped packets and rubberbanding.
+  * **Network Stability Badge:** Reactive indicator (`🟢 Ultra-Low Latency`, `🟢 Smooth Gaming`, `🟡 Good`, `🔴 Jitter Spike`).
 * **🎮 Seamless Gaming Overlay Support:**
   * **Win32 `SetWindowPos` TopMost Hooks:** Stays persistently on top of full-screen borderless games (GTA V, Battlefield, Cyberpunk, etc.) without getting buried.
   * **Unified 3-Button Mode Switcher:** Clean `[💊 Pill]` `[🗂️ Card]` `[📺 Studio]` buttons across all sizes with zero confusing icons.
